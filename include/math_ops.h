@@ -2,7 +2,7 @@
 #define MATH_OPS_H
 
 #include <stdint.h>
-
+#include "fp16.h"
 
 void rmsnorm(float* o, float* x, float* weight, int size);
 void matmul(float* xout, float* x, void* w, int d, int n, float scale);
@@ -20,5 +20,6 @@ void elementwise_add(float* result, float* matrix1, void* matrix2, int total_ele
 void elementwise_multiply_and_add(float* result, float* matrix1, float* matrix2, float* matrix3, int total_elements);
 void outer_product(float* out, float* x, float* y, int d, int n);
 void sum_along_last_dim(float* result, float* matrix, int rows, int cols);
-inline float dequantize(int8_t q, float scale);
+inline float dequantize(fp16_t q, float scale);
+
 #endif // MATH_OPS_H

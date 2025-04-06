@@ -1,0 +1,7 @@
+#model fiiles 
+*.bin
+*.json
+*.txt
+*.jsonl
+*.jsonl.gz
+*.jsonl.gz.part

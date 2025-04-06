@@ -1,21 +1,18 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -O2 -g
+CFLAGS = -Wall -Wextra -O2 -g -Iinclude
 LDFLAGS = -lm
 
-SRC = src/main.c src/mamba.c src/math_ops.c src/tokenizer.c src/sampler.c src/utils.c src/memory_alloc.c
-OBJ = $(SRC:.c=.o)
+SRCS = src/main.c src/mamba.c src/memory_alloc.c src/utils.c src/math_ops.c src/sampler.c src/tokenizer.c src/fp16.c
+OBJS = $(SRCS:.c=.o)
+TARGET = mamba
 
-INCLUDE = -Iinclude
-
-all: mamba_project
-
-mamba_project: $(OBJ)
-	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJ) -o mamba_project
+$(TARGET): $(OBJS)
+	$(CC) $(OBJS) -o $(TARGET) $(LDFLAGS)
 
 %.o: %.c
-	$(CC) $(CFLAGS) $(INCLUDE) -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJ) mamba_project
+	rm -f $(OBJS) $(TARGET)
 
-.PHONY: all clean
+.PHONY: clean

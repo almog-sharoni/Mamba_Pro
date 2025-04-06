@@ -17,6 +17,17 @@ def serialize_fp32(file, tensor, scales_file=None):
     b = struct.pack(f'{len(d)}f', *d)
     file.write(b)
 
+def serialize_fp16(file, tensor, scales_file=None):
+    """ writes one fp16 tensor to file that is open in wb mode """
+    # Convert to numpy array and ensure it's in float16 format
+    d = tensor.detach().cpu().view(-1).to(torch.float16).numpy()
+    
+    # Convert to bytes using numpy's tobytes() method
+    # This ensures proper byte ordering for C compatibility
+    b = d.tobytes()
+    file.write(b)
+    print(f"Serialized {len(d)} elements to fp16.")
+
 def serialize_int8(file, tensor, scales_file=None):
     """ writes one int8 tensor and its scale to file """
     tensor_cpu = tensor.detach().cpu()
@@ -95,11 +106,12 @@ def write_layer_weights(file, scales_file, model, layer_fmt, n_layers, log_file,
         # print_first_10_weights(model[layer_key], layer_key, log_file)
         serialize_func(file, model[layer_key], scales_file)
 
-def model_export(model, config, filepath, scales_filepath, quantize=False, bfloat8=False):
+def model_export(model, config, filepath, scales_filepath, quantize=False, bfloat8=False, fp16=False):
     """
-    Export the model weights in float32, int8, or bfloat8 .bin file to be read from C.
+    Export the model weights in float32, int8, bfloat8, or fp16 .bin file to be read from C.
     If quantize is True, convolutional and fully connected layers are exported as INT8.
     If bfloat8 is True, convolutional and fully connected layers are exported as BFLOAT8.
+    If fp16 is True, convolutional and fully connected layers are exported as FP16.
     Scales are exported to a separate file when quantize is True.
     """
     version = 1
@@ -164,6 +176,9 @@ def model_export(model, config, filepath, scales_filepath, quantize=False, bfloa
 
     def should_quantize_bfloat8(key):
         return bfloat8 and any(pattern in key for pattern in quantize_patterns)
+        
+    def should_quantize_fp16(key):
+        return fp16 and any(pattern in key for pattern in quantize_patterns)
 
     # write the embedding weights
     write_weights(out_file, model, 'embedding.weight', log_file)
@@ -188,6 +203,8 @@ def model_export(model, config, filepath, scales_filepath, quantize=False, bfloa
         example_key = key_fmt % 0
         if should_quantize_bfloat8(example_key):
             serialize_func = lambda f, t, s=None: serialize_bfloat8(f, t, s)
+        elif should_quantize_fp16(example_key):
+            serialize_func = lambda f, t, s=None: serialize_fp16(f, t, s)
         else:
             serialize_func = serialize_int8 if should_quantize(example_key) else serialize_fp32
         write_layer_weights(out_file, scales_file, model, key_fmt, config.n_layers, log_file, serialize_func=serialize_func)
@@ -199,7 +216,10 @@ def model_export(model, config, filepath, scales_filepath, quantize=False, bfloa
     # final classifier weights
     if not shared_classifier:
         # Decide if lm_head.weight should be quantized
-        serialize_func = serialize_int8 if should_quantize('lm_head.weight') else serialize_fp32
+        if should_quantize_fp16('lm_head.weight'):
+            serialize_func = lambda f, t, s=None: serialize_fp16(f, t, s)
+        else:
+            serialize_func = serialize_int8 if should_quantize('lm_head.weight') else serialize_fp32
         write_weights(out_file, model, 'lm_head.weight', log_file, serialize_func=serialize_func)
 
     out_file.close()
@@ -272,6 +292,7 @@ if __name__ == "__main__":
     parser.add_argument("destination", type=str, help="full path to the output file", default="model.bin")
     parser.add_argument("--int8", action='store_true', help="Export conv and fully connected layers as INT8")
     parser.add_argument("--bfloat8", action='store_true', help="Export conv and fully connected layers as BFLOAT8")
+    parser.add_argument("--fp16", action='store_true', help="Export conv and fully connected layers as FP16")
     args = parser.parse_args()
 
     # if the source starts with 'state-spaces/mamba-' then load the model from HuggingFace
@@ -287,7 +308,7 @@ if __name__ == "__main__":
 
     # export
     scales_path = args.destination + ".scales" if args.int8 or args.bfloat8 else None
-    model_export(model, config, args.destination, scales_path, quantize=args.int8, bfloat8=args.bfloat8)
+    model_export(model, config, args.destination, scales_path, quantize=args.int8, bfloat8=args.bfloat8, fp16=args.fp16)
     print(f"done. saved weights to {args.destination}")
     if args.int8 or args.bfloat8:
         print(f"done. saved scales to {scales_path}")

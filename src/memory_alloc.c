@@ -121,7 +121,7 @@ void memory_map_weights(MambaWeights *w, Config* p, float* ptr) {
     ptr += n_layers * p->d_inner;
 
     // INT8 out_proj
-    w->out_proj = (int8_t*)ptr; 
+    w->out_proj = (fp16_t*)ptr; 
     // print_int8_weights_sample(w->out_proj, n_layers * p->dim * p->d_inner / 4, "out_proj");
     ptr += n_layers * p->dim * p->d_inner / 4;
 

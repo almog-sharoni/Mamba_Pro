@@ -45,7 +45,7 @@ void error_usage() {
     exit(EXIT_FAILURE);
 }
 
-void print_int8_weights_sample(const int8_t* weights, int size, const char* layer_name) {
+void print_int8_weights_sample(const fp16_t* weights, int size, const char* layer_name) {
     FILE* file = fopen("weights_int8_c.txt", "a");
     if (!file) {
         fprintf(stderr, "Failed to open weights_int8_c.txt\n");
@@ -53,7 +53,7 @@ void print_int8_weights_sample(const int8_t* weights, int size, const char* laye
     }
     fprintf(file, "Layer: %s, First 10 int8 weights: ", layer_name);
     for (int i = 0; i < 10 && i < size; i++) {
-        fprintf(file, "%d ", (int8_t)weights[i]);
+        fprintf(file, "%d ", (fp16_t)weights[i]);
     }
     fprintf(file, "\n");
     fclose(file);

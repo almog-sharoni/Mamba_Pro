@@ -40,7 +40,7 @@ void matmul(float *xout, float *x, void *w, int d, int n, float scale)
 #pragma omp simd reduction(+ : sum)
             for (int j = 0; j < n; j++)
             {
-                sum += dequantize(((int8_t *)w)[offset + j], scale) * x[j];
+                sum += dequantize(((fp16_t *)w)[offset + j], scale) * x[j];
             }
         }
         xout[i] = sum;
@@ -58,9 +58,9 @@ void linear(float *xout, float *x, void *w, void *b, int d, int n, float scale_w
 #pragma omp simd reduction(+ : sum)
         for (int j = 0; j < n; j++)
         {
-            sum += dequantize(((int8_t *)w)[offset + j], scale_w) * x[j];
+            sum += dequantize(((fp16_t *)w)[offset + j], scale_w) * x[j];
         }
-        xout[i] = sum + dequantize(((int8_t *)b)[i], scale_b);
+        xout[i] = sum + dequantize(((fp16_t *)b)[i], scale_b);
     }
 }
 
@@ -157,8 +157,8 @@ void elementwise_multiply(float *result, float *matrix1, void *matrix2, int tota
 #pragma omp parallel for
     for (int i = 0; i < total_elements; i++)
     {
-        // result[i] = matrix1[i] * ((int8_t*)matrix2)[i];
-        result[i] = matrix1[i] * dequantize(((int8_t *)matrix2)[i], scale);
+        // result[i] = matrix1[i] * ((fp16_t*)matrix2)[i];
+        result[i] = matrix1[i] * dequantize(((fp16_t *)matrix2)[i], scale);
     }
 }
 void elementwise_add(float *result, float *matrix1, void *matrix2, int total_elements, float scale)
@@ -166,7 +166,7 @@ void elementwise_add(float *result, float *matrix1, void *matrix2, int total_ele
 #pragma omp parallel for
     for (int i = 0; i < total_elements; i++)
     {
-        result[i] = matrix1[i] + dequantize(((int8_t *)matrix2)[i], scale);
+        result[i] = matrix1[i] + dequantize(((fp16_t *)matrix2)[i], scale);
     }
 }
 void elementwise_multiply_and_add(float *result, float *matrix1, float *matrix2, float *matrix3, int total_elements)
@@ -204,6 +204,6 @@ void sum_along_last_dim(float *result, float *matrix, int rows, int cols)
     }
 }
 
-inline float dequantize(int8_t q, float scale) {
-    return q * scale;
+inline float dequantize(fp16_t q, float scale) {
+    return fp16_to_float(q) * 1.0f;
 }

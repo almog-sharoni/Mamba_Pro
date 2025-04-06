@@ -122,7 +122,7 @@ void forward_layer(Mamba* mamba, unsigned long long l, float* hidden_state) {
 
     // xz = self.in_proj(hidden_states)  # hidden_states: (dim), in_proj (2*d_inner, dim), xz (2*d_inner)
     float scale_in_proj = w->in_proj_scale[l];
-    matmul(s->xz, hidden_state, (int8_t*)w->in_proj + l * 2*d_inner*dim, 2*d_inner, dim, scale_in_proj);
+    matmul(s->xz, hidden_state, (fp16_t*)w->in_proj + l * 2*d_inner*dim, 2*d_inner, dim, scale_in_proj);
     
 
     // x, z = xz.chunk(2, dim=-1)
@@ -135,10 +135,10 @@ void forward_layer(Mamba* mamba, unsigned long long l, float* hidden_state) {
 
     // Dequantize conv1d_weight and conv1d_bias
     float scale = w->conv1d_weight_scale[l];
-    elementwise_multiply(s->temp, conv_state, (int8_t*)w->conv1d_weight + l * d_inner * d_conv, d_inner * d_conv, scale);
+    elementwise_multiply(s->temp, conv_state, (fp16_t*)w->conv1d_weight + l * d_inner * d_conv, d_inner * d_conv, scale);
     sum_along_last_dim(x, s->temp, d_inner, d_conv);
     float scale_bias = w->conv1d_bias_scale[l];
-    elementwise_add(x, x, (int8_t*)w->conv1d_bias + l*d_inner, d_inner, scale_bias);
+    elementwise_add(x, x, (fp16_t*)w->conv1d_bias + l*d_inner, d_inner, scale_bias);
 
 
 
@@ -150,7 +150,7 @@ void forward_layer(Mamba* mamba, unsigned long long l, float* hidden_state) {
 
     // Dequantize x_proj and dt_proj_weight
     float scale_x_proj = w->x_proj_scale[l];
-    matmul(s->x_db, x, (int8_t*)w->x_proj + l * (dt_rank + 2 * d_state) * d_inner, dt_rank + 2 * d_state, d_inner, scale_x_proj);
+    matmul(s->x_db, x, (fp16_t*)w->x_proj + l * (dt_rank + 2 * d_state) * d_inner, dt_rank + 2 * d_state, d_inner, scale_x_proj);
     // Apply dequantization if needed
     // dequantize_float(s->x_db, scale_x_proj); 
 
@@ -162,7 +162,7 @@ void forward_layer(Mamba* mamba, unsigned long long l, float* hidden_state) {
     // Dequantize dt_proj_weight and dt_proj_bias
     float scale_dt_proj = w->dt_proj_weight_scale[l];
     float scale_dt_proj_bias = w->dt_proj_bias_scale[l];
-    linear(s->dt, dt, (int8_t*)w->dt_proj_weight + l * d_inner * dt_rank, (int8_t*)w->dt_proj_bias + l * d_inner, d_inner, dt_rank,scale_dt_proj,scale_dt_proj_bias);
+    linear(s->dt, dt, (fp16_t*)w->dt_proj_weight + l * d_inner * dt_rank, (fp16_t*)w->dt_proj_bias + l * d_inner, d_inner, dt_rank,scale_dt_proj,scale_dt_proj_bias);
     // Apply dequantization if needed
     // dequantize_float(s->dt, scale_dt_proj);
 
@@ -195,7 +195,7 @@ void forward_layer(Mamba* mamba, unsigned long long l, float* hidden_state) {
 
     // Dequantize out_proj
     float scale_out_proj = w->out_proj_scale[l];
-    matmul(hidden_state, y, (int8_t*)w->out_proj + l * dim * d_inner, dim, d_inner, scale_out_proj);
+    matmul(hidden_state, y, (fp16_t*)w->out_proj + l * dim * d_inner, dim, d_inner, scale_out_proj);
     // Apply dequantization if needed
     // dequantize_float(hidden_state, scale_out_proj);   
 

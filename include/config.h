@@ -2,15 +2,12 @@
 #define CONFIG_H
 
 #include <stdlib.h>
-
-
+#include "fp16.h"
 
 #define BOS 0
 #define EOS 0
 
-
 // Mamba model
-
 typedef struct {
     int n_layers;   // number of layers
     int vocab_size; // vocabulary size
@@ -27,21 +24,20 @@ typedef struct {
     // token embedding table
     float* token_embedding_table; // (rounded_vocab_size, dim)
     // weights for layers
-    int8_t* in_proj;        // (layer, 2*d_inner, dim)
-    int8_t* conv1d_weight;  // (layer, d_inner, 1, d_conv)
-    int8_t* conv1d_bias;    // (layer, d_inner)
-    int8_t* x_proj;         // (layer, dt_rank+2*d_state, d_inner)
-    int8_t* dt_proj_weight; // (layer, d_inner, dt_rank)
-    int8_t* dt_proj_bias;   // (layer, d_inner)
+    fp16_t* in_proj;        // (layer, 2*d_inner, dim)
+    fp16_t* conv1d_weight;  // (layer, d_inner, 1, d_conv)
+    fp16_t* conv1d_bias;    // (layer, d_inner)
+    fp16_t* x_proj;         // (layer, dt_rank+2*d_state, d_inner)
+    fp16_t* dt_proj_weight; // (layer, d_inner, dt_rank)
+    fp16_t* dt_proj_bias;   // (layer, d_inner)
     float* A;              // (layer, d_inner, d_state)
     float* D;              // (layer, d_inner)
-    int8_t* out_proj;       // (layer, dim, d_inner)
+    fp16_t* out_proj;       // (layer, dim, d_inner)
     float* norm;           // (layer, dim)
     // final rmsnorm
     float* final_norm;     // (dim)
     // (optional) classifier weights for the logits, on the last layer
     float* lm_head;        // (rounded_vocab_size, dim)
-
 
     float* in_proj_scale;
     float* conv1d_weight_scale;
@@ -51,8 +47,6 @@ typedef struct {
     float* dt_proj_bias_scale;
     float* out_proj_scale;
 } MambaWeights;
-
-
 
 typedef struct {
     // memory reused by all layers
