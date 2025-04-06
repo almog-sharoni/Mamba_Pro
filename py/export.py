@@ -18,15 +18,20 @@ def serialize_fp32(file, tensor, scales_file=None):
     file.write(b)
 
 def serialize_fp16(file, tensor, scales_file=None):
-    """ writes one fp16 tensor to file that is open in wb mode """
-    # Convert to numpy array and ensure it's in float16 format
-    d = tensor.detach().cpu().view(-1).to(torch.float16).numpy()
-    
-    # Convert to bytes using numpy's tobytes() method
-    # This ensures proper byte ordering for C compatibility
+    """ writes one fp16 tensor and its scale to file """
+    tensor_cpu = tensor.detach().cpu()
+    max_val = tensor_cpu.abs().max()
+    if max_val == 0:
+        scale = 1.0
+    else:
+        scale = max_val / 32767  # fp16 range is -32768 to 32767
+    tensor_scaled = tensor_cpu / scale
+    d = tensor_scaled.view(-1).to(torch.float16).numpy()
     b = d.tobytes()
     file.write(b)
-    print(f"Serialized {len(d)} elements to fp16.")
+    print(f"Serialized {len(d)} elements to fp16 with scale: {scale}.")
+    if scales_file:
+        scales_file.write(struct.pack('f', scale))
 
 def serialize_int8(file, tensor, scales_file=None):
     """ writes one int8 tensor and its scale to file """

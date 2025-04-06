@@ -205,5 +205,5 @@ void sum_along_last_dim(float *result, float *matrix, int rows, int cols)
 }
 
 inline float dequantize(fp16_t q, float scale) {
-    return fp16_to_float(q) * 1.0f;
+    return fp16_to_float(q) * scale;
 }
