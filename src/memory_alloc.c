@@ -95,24 +95,24 @@ void memory_map_weights(MambaWeights *w, Config* p, float* ptr) {
     // Weights for layers
 
     // INT8 weights with proper casting
-    w->in_proj = ptr;  
-    // print_int8_weights_sample(w->in_proj, n_layers * (2 * p->d_inner * p->dim) / 4, "in_proj");
-    ptr += n_layers * (2 * p->d_inner * p->dim) / 2; // Adjust pointer for int8
-    w->conv1d_weight = ptr; 
-    // print_int8_weights_sample(w->conv1d_weight, n_layers * (p->d_inner * p->d_conv) / 4, "conv1d_weight");
-    ptr += n_layers * (p->d_inner * p->d_conv) / 2; 
-    w->conv1d_bias = ptr; 
-    // print_int8_weights_sample(w->conv1d_bias, n_layers * (p->d_inner) / 4, "conv1d_bias");
-    ptr += n_layers * (p->d_inner) / 2; 
-    w->x_proj = ptr; 
-    // print_int8_weights_sample(w->x_proj, n_layers * ((p->dt_rank + 2 * p->d_state) * p->d_inner) / 4, "x_proj");
-    ptr += n_layers * ((p->dt_rank + 2 * p->d_state) * p->d_inner) / 2;
-    w->dt_proj_weight = ptr; 
-    // print_int8_weights_sample(w->dt_proj_weight, n_layers * (p->d_inner * p->dt_rank) / 4, "dt_proj_weight");
-    ptr += n_layers * (p->d_inner * p->dt_rank) / 2;
-    w->dt_proj_bias = ptr; 
-    // print_int8_weights_sample(w->dt_proj_bias, n_layers * (p->d_inner) / 4, "dt_proj_bias");
-    ptr += n_layers * (p->d_inner) / 2;
+    w->in_proj = (fp16_t*)ptr;  
+    // print_int8_weights_sample(w->in_proj, n_layers * (2 * p->d_inner * p->dim) / 2, "in_proj");
+    ptr += n_layers * (2 * p->d_inner * p->dim)  / 2; // Adjust pointer for int8
+    w->conv1d_weight = (fp16_t*)ptr; 
+    // print_int8_weights_sample(w->conv1d_weight, n_layers * (p->d_inner * p->d_conv) / 2, "conv1d_weight");
+    ptr += n_layers * (p->d_inner * p->d_conv)  / 2; 
+    w->conv1d_bias = (fp16_t*)ptr; 
+    // print_int8_weights_sample(w->conv1d_bias, n_layers * (p->d_inner) / 2, "conv1d_bias");
+    ptr += n_layers * (p->d_inner)  / 2; 
+    w->x_proj = (fp16_t*)ptr; 
+    // print_int8_weights_sample(w->x_proj, n_layers * ((p->dt_rank + 2 * p->d_state) * p->d_inner) / 2, "x_proj");
+    ptr += n_layers * ((p->dt_rank + 2 * p->d_state) * p->d_inner)  / 2;
+    w->dt_proj_weight = (fp16_t*)ptr; 
+    // print_int8_weights_sample(w->dt_proj_weight, n_layers * (p->d_inner * p->dt_rank) / 2, "dt_proj_weight");
+    ptr += n_layers * (p->d_inner * p->dt_rank)  / 2;
+    w->dt_proj_bias = (fp16_t*)ptr; 
+    // print_int8_weights_sample(w->dt_proj_bias, n_layers * (p->d_inner) / 2, "dt_proj_bias");
+    ptr += n_layers * (p->d_inner)  / 2;
 
     // Shared layers remain as float
     w->A = (float*)ptr; 
@@ -122,8 +122,8 @@ void memory_map_weights(MambaWeights *w, Config* p, float* ptr) {
 
     // INT8 out_proj
     w->out_proj = (fp16_t*)ptr; 
-    // print_int8_weights_sample(w->out_proj, n_layers * p->dim * p->d_inner / 4, "out_proj");
-    ptr += n_layers * p->dim * p->d_inner / 2;
+    // print_int8_weights_sample(w->out_proj, n_layers * p->dim * p->d_inner / 2, "out_proj");
+    ptr += n_layers * p->dim * p->d_inner  / 2;
 
 
     // Norm layers and final norm
