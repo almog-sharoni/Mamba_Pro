@@ -1,5 +1,6 @@
 #model fiiles 
 *.bin
+*.bin.scales
 *.json
 *.txt
 *.jsonl
