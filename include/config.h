@@ -12,37 +12,36 @@
 // Mamba model
 
 typedef struct {
-    int n_layers;   // number of layers
-    int vocab_size; // vocabulary size
-    int dim;        // embedding dimension
-    int d_inner;
-    int dt_rank;
-    int d_state;
-    int d_conv;
-    int shared_classifier;
-    int rounded_vocab_size; // vocab_size rounded up to the nearest multiple of 8
+    int n_layers;      // number of layers
+    int n_classes;     // number of output classes (10)
+    int dim;          // embedding dimension (136)
+    int input_dim;    // input dimension (3*23=69 for MFCC + delta + delta-delta)
+    int d_inner;      // inner dimension (272)
+    int dt_rank;      // delta rank (9)
+    int d_state;      // state dimension (51)
+    int d_conv;       // conv dimension (10)
 } Config;
 
 typedef struct {
-    // token embedding table
-    float* token_embedding_table; // (rounded_vocab_size, dim)
-    // weights for layers
-    int8_t* in_proj;        // (layer, 2*d_inner, dim)
-    int8_t* conv1d_weight;  // (layer, d_inner, 1, d_conv)
-    int8_t* conv1d_bias;    // (layer, d_inner)
-    int8_t* x_proj;         // (layer, dt_rank+2*d_state, d_inner)
-    int8_t* dt_proj_weight; // (layer, d_inner, dt_rank)
-    int8_t* dt_proj_bias;   // (layer, d_inner)
-    float* A;              // (layer, d_inner, d_state)
-    float* D;              // (layer, d_inner)
-    int8_t* out_proj;       // (layer, dim, d_inner)
-    float* norm;           // (layer, dim)
-    // final rmsnorm
-    float* final_norm;     // (dim)
-    // (optional) classifier weights for the logits, on the last layer
-    float* lm_head;        // (rounded_vocab_size, dim)
-
-
+    // model core components
+    float* cls_token;              // (1, 1, dim)
+    float* proj_weight;            // (dim, input_dim)
+    float* proj_bias;              // (dim)
+    // layer weights
+    int8_t* in_proj;              // (layer, 2*d_inner, dim)
+    int8_t* conv1d_weight;        // (layer, d_inner, d_conv)
+    int8_t* conv1d_bias;          // (layer, d_inner)
+    int8_t* x_proj;               // (layer, dt_rank+2*d_state, d_inner)
+    int8_t* dt_proj_weight;       // (layer, d_inner, dt_rank)
+    int8_t* dt_proj_bias;         // (layer, d_inner)
+    float* A;                     // (layer, d_inner, d_state)
+    float* D;                     // (layer, d_inner)
+    int8_t* out_proj;            // (layer, dim, d_inner)
+    float* layer_norms;          // (layer, dim)
+    // classification head
+    int8_t* fc_weight;           // (n_classes, dim)
+    float* fc_bias;              // (n_classes)
+    // quantization scales
     float* in_proj_scale;
     float* conv1d_weight_scale;
     float* conv1d_bias_scale;
@@ -50,35 +49,35 @@ typedef struct {
     float* dt_proj_weight_scale;
     float* dt_proj_bias_scale;
     float* out_proj_scale;
+    float* fc_weight_scale;
 } MambaWeights;
-
-
 
 typedef struct {
     // memory reused by all layers
-    float* input;        // (dim)
-    float* hidden_state; // (dim)
-    float *xz;     // (2*d_inner)          x and z are pointers into this buffer
-    float *x_db;   // (dt_rank+2*d_state)  dt, B, C are pointers into this buffer
-    float *dt;     // (d_inner)            later, dt is a pointer to this buffer
-    float *dA;     // (d_inner, d_state)
-    float *dB;     // (d_inner, d_state)
-    float *temp;   // (d_inner, d_state)
-    float *y;      // (d_inner)
-    float *logits; // (rounded_vocab_size)
-    // internal state, separate memory for each layer
-    float* conv_state; // (n_layers, d_inner, d_conv)
-    float* ssm_state;  // (n_layers, d_inner, d_state)
+    float* cls_token;     // (dim)
+    float* input;         // (dim)
+    float* hidden_state;  // (dim)
+    float* xz;           // (2*d_inner)
+    float* x_db;         // (dt_rank+2*d_state)
+    float* dt;           // (d_inner)
+    float* dA;           // (d_inner, d_state)
+    float* dB;           // (d_inner, d_state)
+    float* temp;         // (d_inner, d_state)
+    float* y;            // (d_inner)
+    float* logits;       // (n_classes)
+    // internal state
+    float* conv_state;   // (n_layers, d_inner, d_conv)
+    float* ssm_state;    // (n_layers, d_inner, d_state)
+    float* layer_norms;  // (n_layers, dim)
 } RunState;
 
 typedef struct {
-    Config config; // the hyperparameters of the architecture (the blueprint)
-    MambaWeights weights; // the weights of the model
-    RunState state; // buffers for the "wave" of activations in the forward pass
-    // some more state needed to properly clean up the memory mapping (sigh)
-    int fd; // file descriptor for memory mapping
-    float* data; // memory mapped data pointer
-    size_t file_size; // size of the checkpoint file in bytes
+    Config config;      // model configuration
+    MambaWeights weights; // model weights
+    RunState state;     // runtime buffers
+    int fd;            // file descriptor for memory mapping
+    float* data;       // memory mapped data pointer
+    size_t file_size;  // size of checkpoint file in bytes
 } Mamba;
 
 typedef struct {

@@ -109,24 +109,32 @@ def model_export(model, config, filepath, scales_filepath, quantize=False, bfloa
     log_file = open("debug_weights.log", "w")
 
     # first write the header (256 bytes)
-
     # write magic, uint32 of "Mamb"
     out_file.write(struct.pack('I', 0x4d616d62))
     # write version
     out_file.write(struct.pack('i', version))
 
-    # write the params (7 integers + 1 byte)
-    d_inner = model['layers.0.mixer.D'].shape[0]
-    dt_rank = model['layers.0.mixer.dt_proj.weight'].shape[1]
-    d_state = model['layers.0.mixer.A_log'].shape[1]
-    d_conv = model['layers.0.mixer.conv1d.weight'].shape[2]
+    # Get model dimensions from the state dict
+    n_layers = len([k for k in model.keys() if k.startswith('mamba_layers') and k.endswith('.D')])
+    dim = model['proj.weight'].shape[0]  # 136
+    n_classes = model['fc.weight'].shape[0]  # 10
+    input_dim = model['proj.weight'].shape[1]  # 23
+    d_inner = model['mamba_layers.0.D'].shape[0]  # 272
+    dt_rank = model['mamba_layers.0.dt_proj.weight'].shape[1]  # 9
+    d_state = model['mamba_layers.0.A_log'].shape[1]  # 51
+    d_conv = model['mamba_layers.0.conv1d.weight'].shape[2]  # 10
 
-    shared_classifier = torch.equal(model['embedding.weight'], model['lm_head.weight'])
-
-    print(f"writing header\n  layers: {config.n_layers}\n  vocab_size: {config.vocab_size}\n  d_model: {config.d_model}\n  d_inner: {d_inner}\n  dt_rank: {dt_rank}\n  d_state: {d_state}\n  d_conv: {d_conv}\n  shared classifier: {shared_classifier}")
-
-    header = struct.pack('iiiiiiii', config.n_layers, config.vocab_size, config.d_model,
-                         d_inner, dt_rank, d_state, d_conv, int(shared_classifier))
+    # Write header parameters in correct order matching C code:
+    # n_layers, n_classes, dim, input_dim, d_inner, dt_rank, d_state, d_conv
+    header = struct.pack('iiiiiiii', 
+                        n_layers,   # number of layers
+                        n_classes,  # number of output classes
+                        dim,        # embedding dimension
+                        input_dim,  # input feature dimension
+                        d_inner,    # inner dimension
+                        dt_rank,    # delta rank
+                        d_state,    # state dimension
+                        d_conv)     # conv dimension
     out_file.write(header)
 
     # pad the rest with zeros
@@ -134,29 +142,18 @@ def model_export(model, config, filepath, scales_filepath, quantize=False, bfloa
     assert pad >= 0
     out_file.write(b'\0' * pad)
 
-    '''
-    Example of the model structure:
-    embedding.weight - [50280, 768]
-    layers.0.mixer.D - [1536]
-    layers.0.mixer.in_proj.weight - [3072, 768]
-    layers.0.mixer.conv1d.weight - [1536, 1, 4]
-    layers.0.mixer.conv1d.bias - [1536]
-    layers.0.mixer.x_proj.weight - [80, 1536]
-    layers.0.mixer.dt_proj.weight - [1536, 48]
-    layers.0.mixer.dt_proj.bias - [1536]
-    layers.0.mixer.A_log - [1536, 16]
-    layers.0.mixer.out_proj.weight - [768, 1536]
-    layers.0.norm.weight - [768]
-    norm_f.weight - [768]
-    lm_head.weight - [50280, 768]
-    '''
+    # Write initial projection layers
+    write_weights(out_file, model, 'cls_token', log_file)
+    write_weights(out_file, model, 'proj.weight', log_file)
+    write_weights(out_file, model, 'proj.bias', log_file)
 
-    # convert the A_log to A
-    for n in range(config.n_layers):
-        model[f'layers.{n}.mixer.A'] = -torch.exp(model.pop(f'layers.{n}.mixer.A_log'))
+    # Convert A_log to A for all layers
+    for n in range(n_layers):
+        key = f'mamba_layers.{n}.A_log'
+        model[f'mamba_layers.{n}.A'] = -torch.exp(model.pop(key))
 
-    # Define which layer patterns should be quantized
-    quantize_patterns = ['conv', 'proj']
+    # Define layer patterns that should be quantized
+    quantize_patterns = ['conv', 'proj', 'fc']
 
     # Function to determine if a key should be quantized
     def should_quantize(key):
@@ -165,42 +162,36 @@ def model_export(model, config, filepath, scales_filepath, quantize=False, bfloa
     def should_quantize_bfloat8(key):
         return bfloat8 and any(pattern in key for pattern in quantize_patterns)
 
-    # write the embedding weights
-    write_weights(out_file, model, 'embedding.weight', log_file)
-
-    # layer weights
-    # Define layer keys and whether they should be quantized
+    # Write mamba layer weights
     layer_weight_keys = [
-        'layers.%d.mixer.in_proj.weight',
-        'layers.%d.mixer.conv1d.weight',
-        'layers.%d.mixer.conv1d.bias',
-        'layers.%d.mixer.x_proj.weight',
-        'layers.%d.mixer.dt_proj.weight',
-        'layers.%d.mixer.dt_proj.bias',
-        'layers.%d.mixer.A',
-        'layers.%d.mixer.D',
-        'layers.%d.mixer.out_proj.weight',
-        'layers.%d.norm.weight'
+        'mamba_layers.%d.in_proj.weight',
+        'mamba_layers.%d.conv1d.weight',
+        'mamba_layers.%d.conv1d.bias',
+        'mamba_layers.%d.x_proj.weight',
+        'mamba_layers.%d.dt_proj.weight',
+        'mamba_layers.%d.dt_proj.bias',
+        'mamba_layers.%d.A',
+        'mamba_layers.%d.D',
+        'mamba_layers.%d.out_proj.weight',
     ]
 
     for key_fmt in layer_weight_keys:
-        # Determine if current key should be quantized
         example_key = key_fmt % 0
         if should_quantize_bfloat8(example_key):
             serialize_func = lambda f, t, s=None: serialize_bfloat8(f, t, s)
         else:
             serialize_func = serialize_int8 if should_quantize(example_key) else serialize_fp32
-        write_layer_weights(out_file, scales_file, model, key_fmt, config.n_layers, log_file, serialize_func=serialize_func)
-        # write to file 10 weights of the first layer for debugging
+        write_layer_weights(out_file, scales_file, model, key_fmt, n_layers, log_file, serialize_func=serialize_func)
         print_first_10_weights(model[example_key], key_fmt, log_file)
-    # final norm weights
-    write_weights(out_file, model, 'norm_f.weight', log_file)
 
-    # final classifier weights
-    if not shared_classifier:
-        # Decide if lm_head.weight should be quantized
-        serialize_func = serialize_int8 if should_quantize('lm_head.weight') else serialize_fp32
-        write_weights(out_file, model, 'lm_head.weight', log_file, serialize_func=serialize_func)
+    # Write layer norms
+    for n in range(n_layers):
+        write_weights(out_file, model, f'layer_norms.{n}.weight', log_file)
+
+    # Write final classification layer
+    serialize_func = serialize_int8 if should_quantize('fc.weight') else serialize_fp32
+    write_weights(out_file, model, 'fc.weight', log_file, serialize_func=serialize_func)
+    write_weights(out_file, model, 'fc.bias', log_file)
 
     out_file.close()
     if scales_file:

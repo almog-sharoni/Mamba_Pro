@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+
+# Virtual Environment
+leo_mamba_env/
+env/
+venv/
+ENV/
+
+# Model Files
+*.pth
+*.bin
+*.bin.scales
+tokenizer.bin
+model.bin
+output.bin
+*.onnx
+
+# Development
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Build and Logs
+build/
+debug_weights.log
+*.log
+mamba
+*.o
+
+# Data files
+*.raw
+*.wav
+*.mp3
+*.tar.gz
+UrbanSound8K.tar.gz
+UrbanSound8K/
+
+# Project specific
+input.raw
+debug_weights.log
+models/*.bin
+models/*.scales
+my_kws_model/*.bin
+my_kws_model/*.scales
+
+# Large directories
+audio/
+data/
+results/
+plots/
+logs/
+
+# Keep
+!requirements.txt
+!.gitignore

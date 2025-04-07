@@ -46,41 +46,62 @@ void load_scales_file(const char* scales_path, MambaWeights *w, Config* p) {
 
 void load_model_file(char* model_path, Config* config, MambaWeights* weights,
     int* fd, float** data, ssize_t* file_size) {
-FILE *file = fopen(model_path, "rb");
-if (!file) { fprintf(stderr, "Couldn't open file %s\n", model_path); exit(EXIT_FAILURE); }
-// read the magic number
-unsigned int magic;
-if (fread(&magic, sizeof(int), 1, file) != 1) { exit(EXIT_FAILURE); }
-if (magic != 0x4d616d62) { fprintf(stderr, "Invalid magic number: %x\n", magic); exit(EXIT_FAILURE); }
-// read the version
-int version;
-if (fread(&version, sizeof(int), 1, file) != 1) { exit(EXIT_FAILURE); }
-if (version != 1) { fprintf(stderr, "Invalid version: %d\n", version); exit(EXIT_FAILURE); }
-// read the config
-if (fread(config, sizeof(Config), 1, file) != 1) { exit(EXIT_FAILURE); }
-if (config->vocab_size % 8 != 0) {
-config->rounded_vocab_size = config->vocab_size + (8 - (config->vocab_size % 8));
-} else {
-config->rounded_vocab_size = config->vocab_size;
+    FILE *file = fopen(model_path, "rb");
+    if (!file) { fprintf(stderr, "Couldn't open file %s\n", model_path); exit(EXIT_FAILURE); }
+    
+    // read the magic number
+    unsigned int magic;
+    if (fread(&magic, sizeof(int), 1, file) != 1) { exit(EXIT_FAILURE); }
+    if (magic != 0x4d616d62) { fprintf(stderr, "Invalid magic number: %x\n", magic); exit(EXIT_FAILURE); }
+    
+    // read the version
+    int version;
+    if (fread(&version, sizeof(int), 1, file) != 1) { exit(EXIT_FAILURE); }
+    if (version != 1) { fprintf(stderr, "Invalid version: %d\n", version); exit(EXIT_FAILURE); }
+    
+    // Read config header - each value is a 32-bit integer
+    int header[8];  // n_layers, n_classes, dim, input_dim, d_inner, dt_rank, d_state, d_conv
+    if (fread(header, sizeof(int), 8, file) != 8) {
+        fprintf(stderr, "Failed to read config header\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Set config values from header
+    config->n_layers = header[0];
+    config->n_classes = header[1];
+    config->dim = header[2];
+    config->input_dim = header[3];
+    config->d_inner = header[4];
+    config->dt_rank = header[5];
+    config->d_state = header[6];
+    config->d_conv = header[7];
+
+    // Print loaded configuration
+    fprintf(stderr, "Loaded model configuration:\n");
+    fprintf(stderr, "  n_layers: %d\n", config->n_layers);
+    fprintf(stderr, "  n_classes: %d\n", config->n_classes);
+    fprintf(stderr, "  dim: %d\n", config->dim);
+    fprintf(stderr, "  input_dim: %d\n", config->input_dim);
+    fprintf(stderr, "  d_inner: %d\n", config->d_inner);
+    fprintf(stderr, "  dt_rank: %d\n", config->dt_rank);
+    fprintf(stderr, "  d_state: %d\n", config->d_state);
+    fprintf(stderr, "  d_conv: %d\n", config->d_conv);
+
+    // figure out the file size
+    fseek(file, 0, SEEK_END);
+    *file_size = ftell(file);
+    fclose(file);
+
+    // memory map the model weights
+    *fd = open(model_path, O_RDONLY);
+    if (*fd == -1) { fprintf(stderr, "open failed!\n"); exit(EXIT_FAILURE); }
+    *data = mmap(NULL, *file_size, PROT_READ, MAP_PRIVATE, *fd, 0);
+    if (*data == MAP_FAILED) { fprintf(stderr, "mmap failed!\n"); exit(EXIT_FAILURE); }
+    
+    // Skip header (256 bytes) to get to weights
+    float* weights_ptr = *data + (256 / sizeof(float));
+    memory_map_weights(weights, config, weights_ptr);
 }
-// figure out the file size
-ssize_t header_bytes = 4 + 4 + sizeof(Config);
-fseek(file, 0, SEEK_END); // move file pointer to end of file
-*file_size = ftell(file); // get the file size, in bytes
-fclose(file);
-// memory map the model weights into the data pointer
-*fd = open(model_path, O_RDONLY); // open in read only mode
-if (*fd == -1) { fprintf(stderr, "open failed!\n"); exit(EXIT_FAILURE); }
-*data = mmap(NULL, *file_size, PROT_READ, MAP_PRIVATE, *fd, 0);
-if (*data == MAP_FAILED) { fprintf(stderr, "mmap failed!\n"); exit(EXIT_FAILURE); }
-float* weights_ptr = *data + (256 / 4);
-// float* weights_ptr = (float*)(((char*)*data) + header_bytes);
-
-memory_map_weights(weights, config, weights_ptr);
-
-}
-
-
 
 void load_model(Mamba* m, char* model_path) {
     // read the Config and the Weights from the model file
@@ -202,38 +223,36 @@ void forward_layer(Mamba* mamba, unsigned long long l, float* hidden_state) {
 }
 
 
-float* forward(Mamba* mamba, int token) {
-    // a few convenience variables
+float* forward(Mamba* mamba, float* input) {
+    // convenience variables
     Config* p = &mamba->config;
     MambaWeights* w = &mamba->weights;
     RunState* s = &mamba->state;
     int dim = p->dim;
-    float *input = s->input;
-    float *hidden_state = s->hidden_state;
 
-    // copy the token embedding into x
-    float* content_row = w->token_embedding_table + token * dim;
-    memcpy(input, content_row, dim * sizeof(float));
+    // Apply initial projection to input
+    matmul(s->input, input, (int8_t*)w->proj_weight, dim, p->input_dim, 0.0f);
+    elementwise_add(s->input, s->input, w->proj_bias, dim, 0.0f);
+    
+    // Add cls_token to input
+    elementwise_add(s->input, s->input, w->cls_token, dim, 0.0f);
+
+    // copy input to hidden state for layer processing
+    memcpy(s->hidden_state, s->input, dim * sizeof(float));
 
     // forward all the layers
     for(unsigned long long l = 0; l < p->n_layers; l++) {
-        // normalize the input
-        rmsnorm(hidden_state, input, w->norm + l * dim, dim);
+        // normalize using layer norm
+        rmsnorm(s->hidden_state, s->hidden_state, w->layer_norms + l * dim, dim);
         // forward this layer
-        forward_layer(mamba, l, hidden_state);
-        // residual connection back into hidden_state
-        for (int i = 0; i < dim; i++) {
-            hidden_state[i] += input[i];
-            // copy hidden_state back into input for the next layer
-            input[i] = hidden_state[i];
-        }
+        forward_layer(mamba, l, s->hidden_state);
     }
 
-    // final rmsnorm
-    rmsnorm(hidden_state, hidden_state, w->final_norm, dim);
-
-    // classifier into logits
-    matmul(s->logits, hidden_state, w->lm_head, p->rounded_vocab_size, p->dim, 0.0f);
+    // Apply classification head
+    float scale_fc = w->fc_weight_scale ? w->fc_weight_scale[0] : 0.0f;
+    matmul(s->logits, s->hidden_state, w->fc_weight, p->n_classes, dim, scale_fc);
+    elementwise_add(s->logits, s->logits, w->fc_bias, p->n_classes, 0.0f);
+    
     return s->logits;
 }
 

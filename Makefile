@@ -7,15 +7,15 @@ OBJ = $(SRC:.c=.o)
 
 INCLUDE = -Iinclude
 
-all: mamba_project
+all: mamba
 
-mamba_project: $(OBJ)
-	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJ) -o mamba_project
+mamba: $(OBJ)
+	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJ) -o mamba
 
 %.o: %.c
 	$(CC) $(CFLAGS) $(INCLUDE) -c $< -o $@
 
 clean:
-	rm -f $(OBJ) mamba_project
+	rm -f $(OBJ) mamba
 
 .PHONY: all clean

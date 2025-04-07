@@ -1,0 +1,31 @@
+{
+    "n_layer": 2,
+    "vocab_size": 10,
+    "d_model": 101,
+    "d_state": 51,
+    "d_conv": 10,
+    "expand": 2,
+    "input_dim": 23,
+    "dropout_rate": 0.134439213335519,
+    "use_cls_token": true,
+    "label_names": [
+        "yes",
+        "no",
+        "up",
+        "down",
+        "left",
+        "right",
+        "on",
+        "off",
+        "stop",
+        "go"
+    ],
+    "batch_size": 10,
+    "n_mfcc": 23,
+    "n_fft": 475,
+    "hop_length": 119,
+    "n_mels": 61,
+    "noise_level": 0.2582577623788829,
+    "lr": 0.0011942156978344588,
+    "weight_decay": 2.5617519345807027e-05
+}

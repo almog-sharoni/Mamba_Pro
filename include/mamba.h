@@ -10,6 +10,6 @@ void load_model_file(char* model_path, Config* config, MambaWeights* weights,int
 void load_model(Mamba* m, char* model_path);
 void free_model(Mamba* m);
 void forward_layer(Mamba* mamba, unsigned long long l, float* hidden_state);
-float* forward(Mamba* mamba, int token);
+float* forward(Mamba* mamba, float* input);
 
 #endif // MAMBA_H
